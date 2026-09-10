@@ -145,145 +145,234 @@ elif stage == "3. Match Equation & Properties":
     st.header("3. Match Equation & Properties")
     st.markdown("Match each graph to an equation, then identify its key properties.")
 
+    # Use plain Unicode text inside dropdowns because Streamlit selectboxes
+    # do not render LaTeX.
     items = [
-        ("A", exp_plot(2), r"y=2^x", "Horizontal asymptote $y=0$", "Passes through $(0,1)$", "Increasing"),
-        ("B", exp_plot(0.5), r"y=\left(\frac12\right)^x", "Horizontal asymptote $y=0$", "Passes through $(0,1)$", "Decreasing"),
-        ("C", log_plot(2), r"y=\log_2 x", "Vertical asymptote $x=0$", "Passes through $(1,0)$", "Increasing"),
-        ("D", log_plot(0.5), r"y=\log_{1/2} x", "Vertical asymptote $x=0$", "Passes through $(1,0)$", "Decreasing"),
+        (
+            "A",
+            exp_plot(2),
+            "y = 2ˣ",
+            "Horizontal asymptote y = 0",
+            "Passes through (0, 1)",
+            "Increasing",
+        ),
+        (
+            "B",
+            exp_plot(0.5),
+            "y = (½)ˣ",
+            "Horizontal asymptote y = 0",
+            "Passes through (0, 1)",
+            "Decreasing",
+        ),
+        (
+            "C",
+            log_plot(2),
+            "y = log₂ x",
+            "Vertical asymptote x = 0",
+            "Passes through (1, 0)",
+            "Increasing",
+        ),
+        (
+            "D",
+            log_plot(0.5),
+            "y = log₍₁⁄₂₎ x",
+            "Vertical asymptote x = 0",
+            "Passes through (1, 0)",
+            "Decreasing",
+        ),
     ]
-    eq_options = [r"y=2^x", r"y=\left(\frac12\right)^x", r"y=\log_2 x", r"y=\log_{1/2} x"]
+
+    eq_options = [
+        "y = 2ˣ",
+        "y = (½)ˣ",
+        "y = log₂ x",
+        "y = log₍₁⁄₂₎ x",
+    ]
+
     prop_options = [
-        "Horizontal asymptote $y=0$",
-        "Vertical asymptote $x=0$",
-        "Passes through $(0,1)$",
-        "Passes through $(1,0)$",
+        "Horizontal asymptote y = 0",
+        "Vertical asymptote x = 0",
+        "Passes through (0, 1)",
+        "Passes through (1, 0)",
         "Increasing",
         "Decreasing",
     ]
 
-    all_ok = True
     for label, fig, eq, p1, p2, p3 in items:
         with st.expander(f"Graph {label}", expanded=True):
             c1, c2 = st.columns([1, 1])
+
             with c1:
                 st.pyplot(fig, clear_figure=True)
+
             with c2:
                 eq_choice = st.selectbox(
                     "Equation",
-                    ["Choose"] + list(equation_display.keys()),
-                    format_func=lambda x: "Choose" if x == "Choose" else equation_display[x],
+                    ["Choose"] + eq_options,
                     key=f"eq_{label}",
                 )
-                props = st.multiselect("Select 3 correct properties", prop_options, key=f"prop_{label}")
-                eq_ok = eq_choice == equation_key[eq]
-                props_ok = set(props) == {p1, p2, p3}
-                all_ok = all_ok and eq_ok and props_ok
-                if st.session_state.get(f"show_{label}"):
-                    feedback(eq_ok and props_ok)
+                props = st.multiselect(
+                    "Select 3 correct properties",
+                    prop_options,
+                    key=f"prop_{label}",
+                )
+
                 if st.button(f"Check Graph {label}", key=f"btn_{label}"):
-                    st.session_state[f"show_{label}"] = True
-                    st.rerun()
+                    eq_ok = eq_choice == eq
+                    props_ok = set(props) == {p1, p2, p3}
+                    feedback(eq_ok and props_ok)
 
 # ---------- stage 4 ----------
 elif stage == "4. Graph Passport":
     st.header("4. Graph Passport")
     st.markdown("Compare the two functions below.")
+
     c1, c2 = st.columns(2)
     with c1:
         st.latex(r"f(x)=2^x")
     with c2:
         st.latex(r"g(x)=\log_2 x")
 
+    # Display-friendly Unicode options for selectboxes.
     features = [
         ("Function type", "Exponential", "Logarithmic"),
-        ("Domain", r"(-\infty,\infty)", r"(0,\infty)"),
-        ("Range", r"(0,\infty)", r"(-\infty,\infty)"),
-        ("x-intercept", "None", r"(1,0)"),
-        ("y-intercept", r"(0,1)", "None"),
-        ("Asymptote", r"y=0", r"x=0"),
+        ("Domain", "(−∞, ∞)", "(0, ∞)"),
+        ("Range", "(0, ∞)", "(−∞, ∞)"),
+        ("x-intercept", "None", "(1, 0)"),
+        ("y-intercept", "(0, 1)", "None"),
+        ("Asymptote", "y = 0", "x = 0"),
         ("Direction", "Increasing", "Increasing"),
     ]
+
     choices = [
-        "Exponential", "Logarithmic", "None", "Increasing", "Decreasing",
-        r"(-\infty,\infty)", r"(0,\infty)", r"(0,1)", r"(1,0)", r"y=0", r"x=0"
+        "Exponential",
+        "Logarithmic",
+        "None",
+        "Increasing",
+        "Decreasing",
+        "(−∞, ∞)",
+        "(0, ∞)",
+        "(0, 1)",
+        "(1, 0)",
+        "y = 0",
+        "x = 0",
     ]
 
     ok_list = []
+
+    # Header row
+    h1, h2, h3 = st.columns([1.4, 1, 1])
+    with h1:
+        st.markdown("**Feature**")
+    with h2:
+        st.markdown("**f(x) = 2ˣ**")
+    with h3:
+        st.markdown("**g(x) = log₂ x**")
+
     for feat, ans1, ans2 in features:
         a, b, c = st.columns([1.4, 1, 1])
+
         with a:
             st.markdown(f"**{feat}**")
+
         with b:
             v1 = st.selectbox(
                 f"{feat} for f",
                 ["Choose"] + choices,
-                format_func=lambda x: "Choose" if x == "Choose" else passport_display[x],
                 key=f"pf_{feat}",
                 label_visibility="collapsed",
             )
+
         with c:
             v2 = st.selectbox(
                 f"{feat} for g",
                 ["Choose"] + choices,
-                format_func=lambda x: "Choose" if x == "Choose" else passport_display[x],
                 key=f"pg_{feat}",
                 label_visibility="collapsed",
             )
+
         ok_list.append(v1 == ans1 and v2 == ans2)
+
     if st.button("Check passport"):
-        feedback(all(ok_list), "Passport complete — the properties are all correct.")
+        feedback(
+            all(ok_list),
+            "Passport complete — the properties are all correct.",
+        )
 
 # ---------- stage 5 ----------
 elif stage == "5. Find the Inverse Partner":
     st.header("5. Find the Inverse Partner")
     st.markdown("Pair each exponential function with its logarithmic inverse.")
 
-    pairs = {
-        r"y=2^x": "log2",
-        r"y=3^x": "log3",
-        r"y=10^x": "log10",
-        r"y=\\left(\\frac12\\right)^x": "log_half",
-    }
-    inverse_display = {
-        "log2": "y = log₂ x",
-        "log3": "y = log₃ x",
-        "log10": "y = log₁₀ x",
-        "log_half": "y = log₍₁⁄₂₎ x",
-    }
-    inverse_latex = {
-        "log2": r"y=\\log_2 x",
-        "log3": r"y=\\log_3 x",
-        "log10": r"y=\\log_{10} x",
-        "log_half": r"y=\\log_{\\frac12} x",
-    }
+    pairs = [
+        (r"y=2^x", "y = log₂ x"),
+        (r"y=3^x", "y = log₃ x"),
+        (r"y=10^x", "y = log₁₀ x"),
+        (r"y=\left(\frac{1}{2}\right)^x", "y = log₍₁⁄₂₎ x"),
+    ]
 
-    check = []
-    for i, (left, right_key) in enumerate(pairs.items()):
+    inv_options = [
+        "y = log₂ x",
+        "y = log₃ x",
+        "y = log₁₀ x",
+        "y = log₍₁⁄₂₎ x",
+    ]
+
+    checks = []
+
+    for i, (left_latex, correct_answer) in enumerate(pairs):
         c1, c2 = st.columns([1, 1.3])
+
         with c1:
-            st.latex(left)
+            st.latex(left_latex)
+
         with c2:
             pick = st.selectbox(
                 "Inverse partner",
-                ["Choose"] + list(inverse_display.keys()),
-                format_func=lambda x: "Choose" if x == "Choose" else inverse_display[x],
+                ["Choose"] + inv_options,
                 key=f"inv_{i}",
             )
-            if pick != "Choose":
-                st.caption("Selected:")
-                st.latex(inverse_latex[pick])
-        check.append(pick == right_key)
+
+        checks.append(pick == correct_answer)
 
     if st.button("Check inverse pairs"):
-        feedback(all(check), "Correct — every exponential function is matched to its logarithmic inverse.")
+        feedback(
+            all(checks),
+            "Correct — every exponential function is matched to its logarithmic inverse.",
+        )
 
     st.divider()
     st.subheader("Coordinate Mystery")
-    st.latex(r"(0,1),\ (1,2) \text{ are points on } y=2^x")
-    q1 = st.selectbox("Which corresponding points lie on the inverse?", ["Choose", "(1,0) and (2,1)", "(-1,0) and (-2,1)", "(0,1) and (1,2)"])
-    q2 = st.radio("What happens to coordinates for inverse functions?", ["Choose", r"(x,y)\to(y,x)", r"(x,y)\to(-x,y)", r"(x,y)\to(x,-y)"], horizontal=True)
+
+    st.latex(r"(0,1),\ (1,2)\text{ are points on }y=2^x")
+
+    q1 = st.selectbox(
+        "Which corresponding points lie on the inverse?",
+        [
+            "Choose",
+            "(1, 0) and (2, 1)",
+            "(−1, 0) and (−2, 1)",
+            "(0, 1) and (1, 2)",
+        ],
+    )
+
+    q2 = st.radio(
+        "What happens to coordinates for inverse functions?",
+        [
+            "Choose",
+            "(x, y) → (y, x)",
+            "(x, y) → (−x, y)",
+            "(x, y) → (x, −y)",
+        ],
+        horizontal=True,
+    )
+
     if st.button("Check coordinate mystery"):
-        feedback(q1 == "(1,0) and (2,1)" and q2 == r"(x,y)\to(y,x)")
+        feedback(
+            q1 == "(1, 0) and (2, 1)"
+            and q2 == "(x, y) → (y, x)"
+        )
+
     st.markdown("Inverse-function graphs are reflections across")
     st.latex(r"y=x")
 
@@ -311,7 +400,8 @@ elif stage == "6. Transformation Lab":
     if st.button("Check exponential transformations"):
         feedback(all(checks))
 
-    asym = st.text_input("For $y=2^x+3$, what is the new horizontal asymptote?")
+    st.latex(r"y=2^x+3")
+    asym = st.text_input("What is the new horizontal asymptote?")
     if st.button("Check asymptote"):
         feedback(asym.replace(" ", "") in {"y=3", "3"})
 
@@ -335,19 +425,27 @@ elif stage == "6. Transformation Lab":
     if st.button("Check logarithmic transformations"):
         feedback(all(lchecks))
 
-    new_asym = st.text_input(r"For $y=\log_2(x-3)$, what is the new vertical asymptote?")
+    st.latex(r"y=\log_2(x-3)")
+    new_asym = st.text_input("What is the new vertical asymptote?")
     if st.button("Check log asymptote"):
         feedback(new_asym.replace(" ", "") in {"x=3", "3"})
 
 # ---------- stage 7 ----------
 elif stage == "7. Spot the Mistake":
     st.header("7. Spot the Mistake")
-    st.warning("Alex says: ‘The graph of $y=\\log_2 x$ has a horizontal asymptote $y=0$ because its exponential partner has one.’")
+    st.warning(
+        "Alex says: “The logarithmic graph has a horizontal asymptote at y = 0 "
+        "because its exponential partner has one.”"
+    )
+    st.latex(r"y=\log_2 x")
     agree = st.radio("Do you agree?", ["Choose", "Agree", "Disagree"], horizontal=True)
     reason = st.text_area("Explain your reasoning")
     if st.button("Check claim"):
         if agree == "Disagree":
-            st.success("Correct. $y=\\log_2 x$ has a vertical asymptote at $x=0$. The horizontal asymptote of the exponential graph reflects across $y=x$.")
+            st.success(
+                "Correct. The logarithmic graph has a vertical asymptote at x = 0. "
+                "The horizontal asymptote of the exponential graph reflects across y = x."
+            )
         else:
             st.error("Revisit the relationship between inverse graphs and their asymptotes.")
 
@@ -361,7 +459,10 @@ elif stage == "8. Mystery Graph":
     q_dir = st.selectbox("2. Increasing or decreasing?", ["Choose", "Increasing", "Decreasing"])
     q_type = st.selectbox("3. Type of asymptote", ["Choose", "Horizontal", "Vertical"])
     q_asym = st.text_input("4. Equation of the asymptote")
-    q_parent = st.selectbox("5. Parent function", ["Choose", r"y=2^x", r"y=\log_2x", r"y=x^2"])
+    q_parent = st.selectbox(
+        "5. Parent function",
+        ["Choose", "y = 2ˣ", "y = log₂ x", "y = x²"],
+    )
     q_trans = st.multiselect("6. Transformations", ["Shift right 2", "Shift left 2", "Shift up 1", "Shift down 1", "Reflect across x-axis"])
     q_eq = st.text_input("Bonus: Predict an equation")
 
@@ -371,7 +472,7 @@ elif stage == "8. Mystery Graph":
             and q_dir == "Increasing"
             and q_type == "Vertical"
             and q_asym.replace(" ", "") in {"x=2", "2"}
-            and q_parent == r"y=\log_2x"
+            and q_parent == "y = log₂ x"
             and set(q_trans) == {"Shift right 2", "Shift up 1"}
         )
         if basics:
@@ -388,7 +489,7 @@ elif stage == "9. Exit Ticket":
     e2 = st.text_area("2. How can you recognize a logarithmic graph?")
     e3 = st.text_area("3. What is the relationship between exponential and logarithmic functions?")
     st.latex(r"(3,8) \text{ lies on } y=2^x")
-    st.latex(r"y=\\log_2 x")
+    st.latex(r"y=\log_2 x")
     e4 = st.selectbox(
         "Which point lies on the inverse function shown above?",
         ["Choose", "(8, 3)", "(3, 8)", "(−8, 3)", "(8, −3)"],
