@@ -7,11 +7,26 @@ st.set_page_config(page_title="Graph Detectives", page_icon="🔎", layout="wide
 
 st.title("🔎 Graph Detectives: Exponential & Logarithmic Graphs")
 st.caption("A collaborative Streamlit activity for exploring graph families, properties, inverses, and transformations.")
+# Dropdowns use Unicode math labels because Streamlit selectboxes do not render LaTeX.
 
 with st.sidebar:
     st.header("Team setup")
     team_name = st.text_input("Team name", value="Team 1")
-    member_names = st.text_area("Members (one per line)", value="Student A\nStudent B\nStudent C\nStudent D")
+
+    # Students enter their own names instead of using placeholder names.
+    st.markdown("**Team members**")
+    student_1 = st.text_input("Student 1 name", placeholder="Enter name", key="student_1")
+    student_2 = st.text_input("Student 2 name", placeholder="Enter name", key="student_2")
+    student_3 = st.text_input("Student 3 name", placeholder="Enter name", key="student_3")
+    student_4 = st.text_input("Student 4 name", placeholder="Enter name", key="student_4")
+
+    entered_names = [
+        name.strip()
+        for name in [student_1, student_2, student_3, student_4]
+        if name.strip()
+    ]
+    member_names = "\n".join(entered_names)
+
     st.divider()
     stage = st.radio(
         "Choose activity",
@@ -25,6 +40,7 @@ with st.sidebar:
             "7. Spot the Mistake",
             "8. Mystery Graph",
             "9. Exit Ticket",
+            "10. Congratulations & Feedback",
         ],
     )
 
@@ -84,11 +100,12 @@ if stage == "1. Warm-up":
     responses = []
     names = [n.strip() for n in member_names.splitlines() if n.strip()]
     if not names:
-        names = ["Student A", "Student B", "Student C", "Student D"]
-    cols = st.columns(min(4, len(names)))
-    for i, name in enumerate(names):
-        with cols[i % len(cols)]:
-            responses.append(st.text_area(f"{name}'s idea", key=f"warm_{i}"))
+        st.warning("Please enter at least one student name in the sidebar before starting the warm-up.")
+    else:
+        cols = st.columns(min(4, len(names)))
+        for i, name in enumerate(names):
+            with cols[i % len(cols)]:
+                responses.append(st.text_area(f"{name}'s idea", key=f"warm_{i}"))
     st.info("Discuss: What visual feature most clearly separates an exponential graph from a logarithmic graph?")
 
 # ---------- stage 2 ----------
@@ -151,9 +168,14 @@ elif stage == "3. Match Equation & Properties":
             with c1:
                 st.pyplot(fig, clear_figure=True)
             with c2:
-                eq_choice = st.selectbox("Equation", ["Choose"] + eq_options, key=f"eq_{label}")
+                eq_choice = st.selectbox(
+                    "Equation",
+                    ["Choose"] + list(equation_display.keys()),
+                    format_func=lambda x: "Choose" if x == "Choose" else equation_display[x],
+                    key=f"eq_{label}",
+                )
                 props = st.multiselect("Select 3 correct properties", prop_options, key=f"prop_{label}")
-                eq_ok = eq_choice == eq
+                eq_ok = eq_choice == equation_key[eq]
                 props_ok = set(props) == {p1, p2, p3}
                 all_ok = all_ok and eq_ok and props_ok
                 if st.session_state.get(f"show_{label}"):
@@ -192,9 +214,21 @@ elif stage == "4. Graph Passport":
         with a:
             st.markdown(f"**{feat}**")
         with b:
-            v1 = st.selectbox(f"{feat} for f", ["Choose"] + choices, key=f"pf_{feat}", label_visibility="collapsed")
+            v1 = st.selectbox(
+                f"{feat} for f",
+                ["Choose"] + choices,
+                format_func=lambda x: "Choose" if x == "Choose" else passport_display[x],
+                key=f"pf_{feat}",
+                label_visibility="collapsed",
+            )
         with c:
-            v2 = st.selectbox(f"{feat} for g", ["Choose"] + choices, key=f"pg_{feat}", label_visibility="collapsed")
+            v2 = st.selectbox(
+                f"{feat} for g",
+                ["Choose"] + choices,
+                format_func=lambda x: "Choose" if x == "Choose" else passport_display[x],
+                key=f"pg_{feat}",
+                label_visibility="collapsed",
+            )
         ok_list.append(v1 == ans1 and v2 == ans2)
     if st.button("Check passport"):
         feedback(all(ok_list), "Passport complete — the properties are all correct.")
@@ -205,20 +239,41 @@ elif stage == "5. Find the Inverse Partner":
     st.markdown("Pair each exponential function with its logarithmic inverse.")
 
     pairs = {
-        r"y=2^x": r"y=\log_2 x",
-        r"y=3^x": r"y=\log_3 x",
-        r"y=10^x": r"y=\log_{10} x",
-        r"y=\left(\frac12\right)^x": r"y=\log_{1/2} x",
+        r"y=2^x": "log2",
+        r"y=3^x": "log3",
+        r"y=10^x": "log10",
+        r"y=\\left(\\frac12\\right)^x": "log_half",
     }
-    inv_options = list(pairs.values())
+    inverse_display = {
+        "log2": "y = log₂ x",
+        "log3": "y = log₃ x",
+        "log10": "y = log₁₀ x",
+        "log_half": "y = log₍₁⁄₂₎ x",
+    }
+    inverse_latex = {
+        "log2": r"y=\\log_2 x",
+        "log3": r"y=\\log_3 x",
+        "log10": r"y=\\log_{10} x",
+        "log_half": r"y=\\log_{\\frac12} x",
+    }
+
     check = []
-    for i, (left, right) in enumerate(pairs.items()):
+    for i, (left, right_key) in enumerate(pairs.items()):
         c1, c2 = st.columns([1, 1.3])
         with c1:
-            st.latex(left.replace("y=", "y="))
+            st.latex(left)
         with c2:
-            pick = st.selectbox("Inverse partner", ["Choose"] + inv_options, key=f"inv_{i}")
-        check.append(pick == right)
+            pick = st.selectbox(
+                "Inverse partner",
+                ["Choose"] + list(inverse_display.keys()),
+                format_func=lambda x: "Choose" if x == "Choose" else inverse_display[x],
+                key=f"inv_{i}",
+            )
+            if pick != "Choose":
+                st.caption("Selected:")
+                st.latex(inverse_latex[pick])
+        check.append(pick == right_key)
+
     if st.button("Check inverse pairs"):
         feedback(all(check), "Correct — every exponential function is matched to its logarithmic inverse.")
 
@@ -333,14 +388,64 @@ elif stage == "9. Exit Ticket":
     e2 = st.text_area("2. How can you recognize a logarithmic graph?")
     e3 = st.text_area("3. What is the relationship between exponential and logarithmic functions?")
     st.latex(r"(3,8) \text{ lies on } y=2^x")
-    e4 = st.selectbox("Which point lies on $y=\\log_2x$?", ["Choose", "(8,3)", "(3,8)", "(-8,3)", "(8,-3)"])
+    st.latex(r"y=\\log_2 x")
+    e4 = st.selectbox(
+        "Which point lies on the inverse function shown above?",
+        ["Choose", "(8, 3)", "(3, 8)", "(−8, 3)", "(8, −3)"],
+    )
     e5 = st.text_area("One thing I understand better now is...")
 
     if st.button("Submit exit ticket"):
-        if e4 == "(8,3)":
+        if e4 == "(8, 3)":
             st.success("Exit ticket submitted. The inverse-coordinate answer is correct: $(8,3)$.")
         else:
             st.warning("Exit ticket recorded. Recheck the inverse-coordinate question before finishing.")
+
+    st.info("When you are done, open **10. Congratulations & Feedback** from the sidebar.")
+
+# ---------- stage 10 ----------
+elif stage == "10. Congratulations & Feedback":
+    st.balloons()
+    st.header("🎉 Congratulations, Graph Detective!")
+    st.success(f"Well done, {team_name}! You completed the exponential and logarithmic graphs game.")
+    st.markdown(
+        """
+        You explored graph families, matched equations and properties, compared exponential and
+        logarithmic functions, found inverse partners, investigated transformations, and solved a
+        mystery graph. Great teamwork! ⭐
+        """
+    )
+
+    st.divider()
+    st.subheader("⭐ Rate the game")
+    rating_display = {
+        1: "★☆☆☆☆  1 star",
+        2: "★★☆☆☆  2 stars",
+        3: "★★★☆☆  3 stars",
+        4: "★★★★☆  4 stars",
+        5: "★★★★★  5 stars",
+    }
+    rating = st.radio(
+        "How would you rate this game?",
+        [1, 2, 3, 4, 5],
+        format_func=lambda x: rating_display[x],
+        horizontal=True,
+        index=4,
+    )
+
+    improvement = st.text_area(
+        "What is one thing we could change or add to make this game better?",
+        placeholder="Write one suggestion for improving the game...",
+    )
+
+    if st.button("Submit game feedback", type="primary"):
+        st.session_state["game_rating"] = rating
+        st.session_state["game_improvement"] = improvement
+        st.success(f"Thank you for your feedback! You rated the game {rating}/5 ⭐")
+        if improvement.strip():
+            st.write("Your improvement idea has been recorded for this session.")
+        else:
+            st.info("You can also add one improvement idea above if you would like.")
 
 st.divider()
 st.caption("Teacher tip: use Streamlit Community Cloud or your institution's server to share one link with the class. LaTeX is rendered with Streamlit's built-in math support.")
