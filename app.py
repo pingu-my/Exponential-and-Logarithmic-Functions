@@ -2,6 +2,9 @@ import streamlit as st
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+import gspread
+from google.oauth2.service_account import Credentials
+from datetime import datetime, timezone
 
 st.set_page_config(page_title="Graph Detectives", page_icon="🔎", layout="wide")
 
@@ -93,6 +96,183 @@ def feedback(correct, message="Correct! 🎉"):
     else:
         st.error("Not quite yet. Discuss your reasoning and try again.")
 
+
+# ---------- results tracking + Google Sheets ----------
+SCORE_MAX = {
+    "Sort the Graphs": 4,
+    "Match Equation & Properties": 4,
+    "Graph Passport": 14,
+    "Find the Inverse Partner": 5,
+    "Transformation Lab": 9,
+    "Spot the Mistake": 1,
+    "Mystery Graph": 6,
+    "Exit Ticket": 1,
+}
+
+for _activity in SCORE_MAX:
+    st.session_state.setdefault(f"score::{_activity}", 0)
+
+
+def save_score(activity, score):
+    """Store the team's latest score for an activity."""
+    st.session_state[f"score::{activity}"] = max(
+        0, min(int(score), SCORE_MAX[activity])
+    )
+
+
+def score_for(activity):
+    return st.session_state.get(f"score::{activity}", 0)
+
+
+def overall_score():
+    earned = sum(score_for(activity) for activity in SCORE_MAX)
+    possible = sum(SCORE_MAX.values())
+    percent = round((earned / possible) * 100, 1) if possible else 0.0
+    return earned, possible, percent
+
+
+@st.cache_resource
+def get_results_worksheet():
+    """Connect to the private Google Sheet defined in Streamlit Secrets."""
+    service_info = dict(st.secrets["gcp_service_account"])
+
+    # Works whether the private key was saved with literal \n characters
+    # or as real line breaks in Streamlit Secrets.
+    if "private_key" in service_info:
+        service_info["private_key"] = service_info["private_key"].replace("\\n", "\n")
+
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive",
+    ]
+    credentials = Credentials.from_service_account_info(
+        service_info,
+        scopes=scopes,
+    )
+    client = gspread.authorize(credentials)
+
+    spreadsheet_id = st.secrets["google_sheet"]["spreadsheet_id"]
+    worksheet_name = st.secrets["google_sheet"].get("worksheet_name", "Results")
+
+    spreadsheet = client.open_by_key(spreadsheet_id)
+
+    try:
+        worksheet = spreadsheet.worksheet(worksheet_name)
+    except gspread.WorksheetNotFound:
+        worksheet = spreadsheet.add_worksheet(
+            title=worksheet_name,
+            rows=1000,
+            cols=30,
+        )
+
+    headers = [
+        "Submitted UTC",
+        "Team Name",
+        "Student 1",
+        "Student 2",
+        "Student 3",
+        "Student 4",
+        "Sort the Graphs",
+        "Match Equation & Properties",
+        "Graph Passport",
+        "Find the Inverse Partner",
+        "Transformation Lab",
+        "Spot the Mistake",
+        "Mystery Graph",
+        "Exit Ticket",
+        "Total Score",
+        "Total Possible",
+        "Overall Percentage",
+        "Game Rating",
+        "Improvement Suggestion",
+        "Exit Q1 - Recognize exponential",
+        "Exit Q2 - Recognize logarithmic",
+        "Exit Q3 - Relationship",
+        "Exit Q4 - Inverse point",
+        "Exit Q5 - Understanding",
+    ]
+
+    existing = worksheet.row_values(1)
+    if existing != headers:
+        worksheet.update("A1:X1", [headers])
+
+    return worksheet
+
+
+def submit_team_results(rating, improvement):
+    worksheet = get_results_worksheet()
+    earned, possible, percent = overall_score()
+
+    names = [student_1.strip(), student_2.strip(), student_3.strip(), student_4.strip()]
+
+    row = [
+        datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        team_name.strip(),
+        names[0],
+        names[1],
+        names[2],
+        names[3],
+        f'{score_for("Sort the Graphs")}/{SCORE_MAX["Sort the Graphs"]}',
+        f'{score_for("Match Equation & Properties")}/{SCORE_MAX["Match Equation & Properties"]}',
+        f'{score_for("Graph Passport")}/{SCORE_MAX["Graph Passport"]}',
+        f'{score_for("Find the Inverse Partner")}/{SCORE_MAX["Find the Inverse Partner"]}',
+        f'{score_for("Transformation Lab")}/{SCORE_MAX["Transformation Lab"]}',
+        f'{score_for("Spot the Mistake")}/{SCORE_MAX["Spot the Mistake"]}',
+        f'{score_for("Mystery Graph")}/{SCORE_MAX["Mystery Graph"]}',
+        f'{score_for("Exit Ticket")}/{SCORE_MAX["Exit Ticket"]}',
+        earned,
+        possible,
+        percent,
+        rating,
+        improvement.strip(),
+        st.session_state.get("exit_e1", ""),
+        st.session_state.get("exit_e2", ""),
+        st.session_state.get("exit_e3", ""),
+        st.session_state.get("exit_e4", ""),
+        st.session_state.get("exit_e5", ""),
+    ]
+
+    # Prevent accidental duplicate submissions after a browser refresh.
+    # If the same team name + student names already exist, update that row instead.
+    existing_rows = worksheet.get_all_values()
+    submission_key = [
+        team_name.strip().casefold(),
+        *[name.casefold() for name in names],
+    ]
+
+    matching_row = None
+    for row_number, existing_row in enumerate(existing_rows[1:], start=2):
+        padded = existing_row + [""] * max(0, 6 - len(existing_row))
+        existing_key = [
+            padded[1].strip().casefold(),
+            padded[2].strip().casefold(),
+            padded[3].strip().casefold(),
+            padded[4].strip().casefold(),
+            padded[5].strip().casefold(),
+        ]
+        if existing_key == submission_key:
+            matching_row = row_number
+            break
+
+    if matching_row:
+        worksheet.update(
+            f"A{matching_row}:X{matching_row}",
+            [row],
+            value_input_option="USER_ENTERED",
+        )
+    else:
+        worksheet.append_row(row, value_input_option="USER_ENTERED")
+
+    return earned, possible, percent
+
+
+def show_progress():
+    earned, possible, percent = overall_score()
+    st.progress(percent / 100 if possible else 0)
+    st.caption(f"Recorded performance so far: {earned}/{possible} points ({percent}%).")
+
+
+
 # ---------- stage 1 ----------
 if stage == "1. Warm-up":
     st.header("1. Warm-up")
@@ -133,8 +313,13 @@ elif stage == "2. Sort the Graphs":
             )
 
     if st.button("Check sorting"):
-        ok = all(answers[label] == truth for label, truth, _ in graph_defs)
+        stage_score = sum(
+            answers[label] == truth for label, truth, _ in graph_defs
+        )
+        save_score("Sort the Graphs", stage_score)
+        ok = stage_score == SCORE_MAX["Sort the Graphs"]
         feedback(ok, "Excellent — all graph families are correct.")
+        st.caption(f"Score recorded: {stage_score}/4")
 
     st.markdown("### Team reasoning")
     st.text_area("How can you recognize an exponential graph?")
@@ -220,7 +405,15 @@ elif stage == "3. Match Equation & Properties":
                 if st.button(f"Check Graph {label}", key=f"btn_{label}"):
                     eq_ok = eq_choice == eq
                     props_ok = set(props) == {p1, p2, p3}
-                    feedback(eq_ok and props_ok)
+                    graph_ok = eq_ok and props_ok
+                    st.session_state[f"stage3::{label}"] = graph_ok
+                    stage_score = sum(
+                        bool(st.session_state.get(f"stage3::{g}", False))
+                        for g in ["A", "B", "C", "D"]
+                    )
+                    save_score("Match Equation & Properties", stage_score)
+                    feedback(graph_ok)
+                    st.caption(f"Stage score recorded: {stage_score}/4")
 
 # ---------- stage 4 ----------
 elif stage == "4. Graph Passport":
@@ -294,10 +487,17 @@ elif stage == "4. Graph Passport":
         ok_list.append(v1 == ans1 and v2 == ans2)
 
     if st.button("Check passport"):
+        passport_score = 0
+        for feat, ans1, ans2 in features:
+            passport_score += st.session_state.get(f"pf_{feat}") == ans1
+            passport_score += st.session_state.get(f"pg_{feat}") == ans2
+
+        save_score("Graph Passport", passport_score)
         feedback(
-            all(ok_list),
+            passport_score == SCORE_MAX["Graph Passport"],
             "Passport complete — the properties are all correct.",
         )
+        st.caption(f"Score recorded: {passport_score}/14")
 
 # ---------- stage 5 ----------
 elif stage == "5. Find the Inverse Partner":
@@ -336,10 +536,15 @@ elif stage == "5. Find the Inverse Partner":
         checks.append(pick == correct_answer)
 
     if st.button("Check inverse pairs"):
+        pair_score = sum(checks)
+        st.session_state["stage5_pairs"] = pair_score
+        total_stage5 = pair_score + st.session_state.get("stage5_coordinate", 0)
+        save_score("Find the Inverse Partner", total_stage5)
         feedback(
-            all(checks),
+            pair_score == 4,
             "Correct — every exponential function is matched to its logarithmic inverse.",
         )
+        st.caption(f"Inverse-pair score recorded: {pair_score}/4")
 
     st.divider()
     st.subheader("Coordinate Mystery")
@@ -368,10 +573,18 @@ elif stage == "5. Find the Inverse Partner":
     )
 
     if st.button("Check coordinate mystery"):
-        feedback(
+        coord_ok = (
             q1 == "(1, 0) and (2, 1)"
             and q2 == "(x, y) → (y, x)"
         )
+        st.session_state["stage5_coordinate"] = 1 if coord_ok else 0
+        total_stage5 = (
+            st.session_state.get("stage5_pairs", 0)
+            + st.session_state["stage5_coordinate"]
+        )
+        save_score("Find the Inverse Partner", total_stage5)
+        feedback(coord_ok)
+        st.caption(f"Stage score recorded: {total_stage5}/5")
 
     st.markdown("Inverse-function graphs are reflections across")
     st.latex(r"y=x")
@@ -398,12 +611,31 @@ elif stage == "6. Transformation Lab":
             choice = st.selectbox("Transformation", ["Choose"] + options, key=f"etr_{i}")
         checks.append(choice == ans)
     if st.button("Check exponential transformations"):
-        feedback(all(checks))
+        exp_score = sum(checks)
+        st.session_state["stage6_exp"] = exp_score
+        total_stage6 = (
+            exp_score
+            + st.session_state.get("stage6_exp_asym", 0)
+            + st.session_state.get("stage6_log", 0)
+            + st.session_state.get("stage6_log_asym", 0)
+        )
+        save_score("Transformation Lab", total_stage6)
+        feedback(exp_score == 4)
+        st.caption(f"Exponential transformation score recorded: {exp_score}/4")
 
     st.latex(r"y=2^x+3")
     asym = st.text_input("What is the new horizontal asymptote?")
     if st.button("Check asymptote"):
-        feedback(asym.replace(" ", "") in {"y=3", "3"})
+        asym_ok = asym.replace(" ", "") in {"y=3", "3"}
+        st.session_state["stage6_exp_asym"] = 1 if asym_ok else 0
+        total_stage6 = (
+            st.session_state.get("stage6_exp", 0)
+            + st.session_state["stage6_exp_asym"]
+            + st.session_state.get("stage6_log", 0)
+            + st.session_state.get("stage6_log_asym", 0)
+        )
+        save_score("Transformation Lab", total_stage6)
+        feedback(asym_ok)
 
     st.divider()
     st.markdown("### Logarithmic parent")
@@ -423,12 +655,32 @@ elif stage == "6. Transformation Lab":
             choice = st.selectbox("Transformation", ["Choose"] + lopts, key=f"ltr_{i}")
         lchecks.append(choice == ans)
     if st.button("Check logarithmic transformations"):
-        feedback(all(lchecks))
+        log_score = sum(lchecks)
+        st.session_state["stage6_log"] = log_score
+        total_stage6 = (
+            st.session_state.get("stage6_exp", 0)
+            + st.session_state.get("stage6_exp_asym", 0)
+            + log_score
+            + st.session_state.get("stage6_log_asym", 0)
+        )
+        save_score("Transformation Lab", total_stage6)
+        feedback(log_score == 3)
+        st.caption(f"Logarithmic transformation score recorded: {log_score}/3")
 
     st.latex(r"y=\log_2(x-3)")
     new_asym = st.text_input("What is the new vertical asymptote?")
     if st.button("Check log asymptote"):
-        feedback(new_asym.replace(" ", "") in {"x=3", "3"})
+        log_asym_ok = new_asym.replace(" ", "") in {"x=3", "3"}
+        st.session_state["stage6_log_asym"] = 1 if log_asym_ok else 0
+        total_stage6 = (
+            st.session_state.get("stage6_exp", 0)
+            + st.session_state.get("stage6_exp_asym", 0)
+            + st.session_state.get("stage6_log", 0)
+            + st.session_state["stage6_log_asym"]
+        )
+        save_score("Transformation Lab", total_stage6)
+        feedback(log_asym_ok)
+        st.caption(f"Stage score recorded: {total_stage6}/9")
 
 # ---------- stage 7 ----------
 elif stage == "7. Spot the Mistake":
@@ -441,7 +693,9 @@ elif stage == "7. Spot the Mistake":
     agree = st.radio("Do you agree?", ["Choose", "Agree", "Disagree"], horizontal=True)
     reason = st.text_area("Explain your reasoning")
     if st.button("Check claim"):
-        if agree == "Disagree":
+        claim_ok = agree == "Disagree"
+        save_score("Spot the Mistake", 1 if claim_ok else 0)
+        if claim_ok:
             st.success(
                 "Correct. The logarithmic graph has a vertical asymptote at x = 0. "
                 "The horizontal asymptote of the exponential graph reflects across y = x."
@@ -467,19 +721,24 @@ elif stage == "8. Mystery Graph":
     q_eq = st.text_input("Bonus: Predict an equation")
 
     if st.button("Check mystery graph"):
-        basics = (
-            q_family == "Logarithmic"
-            and q_dir == "Increasing"
-            and q_type == "Vertical"
-            and q_asym.replace(" ", "") in {"x=2", "2"}
-            and q_parent == "y = log₂ x"
-            and set(q_trans) == {"Shift right 2", "Shift up 1"}
-        )
+        mystery_checks = [
+            q_family == "Logarithmic",
+            q_dir == "Increasing",
+            q_type == "Vertical",
+            q_asym.replace(" ", "") in {"x=2", "2"},
+            q_parent == "y = log₂ x",
+            set(q_trans) == {"Shift right 2", "Shift up 1"},
+        ]
+        mystery_score = sum(mystery_checks)
+        save_score("Mystery Graph", mystery_score)
+        basics = mystery_score == SCORE_MAX["Mystery Graph"]
+
         if basics:
             st.success("Mystery solved! A suitable equation is")
             st.latex(r"y=\log_2(x-2)+1")
         else:
             st.error("Some clues do not match yet. Focus on the vertical asymptote and the position relative to the parent graph.")
+        st.caption(f"Score recorded: {mystery_score}/6")
 
 # ---------- stage 9 ----------
 elif stage == "9. Exit Ticket":
@@ -497,7 +756,16 @@ elif stage == "9. Exit Ticket":
     e5 = st.text_area("One thing I understand better now is...")
 
     if st.button("Submit exit ticket"):
-        if e4 == "(8, 3)":
+        st.session_state["exit_e1"] = e1.strip()
+        st.session_state["exit_e2"] = e2.strip()
+        st.session_state["exit_e3"] = e3.strip()
+        st.session_state["exit_e4"] = e4
+        st.session_state["exit_e5"] = e5.strip()
+
+        exit_ok = e4 == "(8, 3)"
+        save_score("Exit Ticket", 1 if exit_ok else 0)
+
+        if exit_ok:
             st.success("Exit ticket submitted. The inverse-coordinate answer is correct: $(8,3)$.")
         else:
             st.warning("Exit ticket recorded. Recheck the inverse-coordinate question before finishing.")
@@ -509,6 +777,7 @@ elif stage == "10. Congratulations & Feedback":
     st.balloons()
     st.header("🎉 Congratulations, Graph Detective!")
     st.success(f"Well done, {team_name}! You completed the exponential and logarithmic graphs game.")
+
     st.markdown(
         """
         You explored graph families, matched equations and properties, compared exponential and
@@ -518,7 +787,30 @@ elif stage == "10. Congratulations & Feedback":
     )
 
     st.divider()
+    st.subheader("📊 Your recorded performance")
+
+    earned, possible, percent = overall_score()
+    st.metric("Overall score", f"{earned}/{possible}", f"{percent}%")
+    show_progress()
+
+    score_rows = []
+    for activity, max_score in SCORE_MAX.items():
+        score_rows.append(
+            {
+                "Activity": activity,
+                "Score": score_for(activity),
+                "Possible": max_score,
+            }
+        )
+    st.dataframe(score_rows, use_container_width=True, hide_index=True)
+
+    st.caption(
+        "Your teacher will receive the recorded score shown above when your team submits the final results."
+    )
+
+    st.divider()
     st.subheader("⭐ Rate the game")
+
     rating_display = {
         1: "★☆☆☆☆  1 star",
         2: "★★☆☆☆  2 stars",
@@ -526,6 +818,7 @@ elif stage == "10. Congratulations & Feedback":
         4: "★★★★☆  4 stars",
         5: "★★★★★  5 stars",
     }
+
     rating = st.radio(
         "How would you rate this game?",
         [1, 2, 3, 4, 5],
@@ -539,14 +832,52 @@ elif stage == "10. Congratulations & Feedback":
         placeholder="Write one suggestion for improving the game...",
     )
 
-    if st.button("Submit game feedback", type="primary"):
-        st.session_state["game_rating"] = rating
-        st.session_state["game_improvement"] = improvement
-        st.success(f"Thank you for your feedback! You rated the game {rating}/5 ⭐")
-        if improvement.strip():
-            st.write("Your improvement idea has been recorded for this session.")
-        else:
-            st.info("You can also add one improvement idea above if you would like.")
+    st.divider()
+    st.subheader("📤 Send results to your teacher")
+
+    missing_names = not team_name.strip() or len(entered_names) == 0
+    if missing_names:
+        st.warning(
+            "Enter a team name and at least one student name in the sidebar before submitting."
+        )
+
+    already_submitted = st.session_state.get("results_submitted", False)
+
+    if already_submitted:
+        st.success(
+            "✅ This team's results have already been sent to the teacher's Google Sheet."
+        )
+
+    submit_disabled = missing_names or already_submitted
+
+    if st.button(
+        "Submit Final Results",
+        type="primary",
+        disabled=submit_disabled,
+        use_container_width=True,
+    ):
+        try:
+            st.session_state["game_rating"] = rating
+            st.session_state["game_improvement"] = improvement
+
+            earned, possible, percent = submit_team_results(rating, improvement)
+            st.session_state["results_submitted"] = True
+
+            st.success(
+                f"✅ Results sent successfully! Final recorded score: "
+                f"{earned}/{possible} ({percent}%)."
+            )
+            st.info(
+                "You may now close the app. Your teacher has a copy of your team's names, "
+                "performance, rating, and feedback."
+            )
+        except Exception as exc:
+            st.error(
+                "The results could not be sent to Google Sheets. "
+                "Please tell your teacher before closing the app."
+            )
+            with st.expander("Technical details for the teacher"):
+                st.code(str(exc))
 
 st.divider()
-st.caption("Teacher tip: use Streamlit Community Cloud or your institution's server to share one link with the class. LaTeX is rendered with Streamlit's built-in math support.")
+st.caption("Teacher tip: final team results are saved to the private Google Sheet configured in Streamlit Secrets.")
